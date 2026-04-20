@@ -257,14 +257,20 @@ class StreamCallback(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
+        # Robust metric lookup
+        loss = logs.get("loss") or logs.get("loss") or 0
+        v_loss = logs.get("val_loss") or logs.get("val_loss") or 0
+        acc = logs.get("accuracy") or logs.get("acc") or 0
+        v_acc = logs.get("val_accuracy") or logs.get("val_acc") or 0
+
         self.q.put({
             "type":     "epoch",
             "epoch":    epoch + 1,
             "total":    self.total,
-            "loss":     round(float(logs.get("loss", 0)), 4),
-            "val_loss": round(float(logs.get("val_loss", 0)), 4),
-            "acc":      round(float(logs.get("accuracy", 0)) * 100, 2),
-            "val_acc":  round(float(logs.get("val_accuracy", 0)) * 100, 2),
+            "loss":     round(float(loss), 4),
+            "val_loss": round(float(v_loss), 4),
+            "acc":      round(float(acc) * 100, 2),
+            "val_acc":  round(float(v_acc) * 100, 2),
         })
         print(f"DEBUG: Epoch {epoch + 1}/{self.total} complete. loss: {logs.get('loss', 0):.4f}")
 
@@ -344,6 +350,7 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             q.put({"type": "log", "msg": "[V5] Model live. Training started..."})
             model.fit(
                 [X_oh, X_int], y,
+                validation_split=0.1, # Small validation set for stats
                 batch_size=32,
                 epochs=cfg.epochs,
                 callbacks=[StreamCallback(q, cfg.epochs)],
