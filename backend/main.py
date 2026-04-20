@@ -308,44 +308,43 @@ async def upload_csv(file: UploadFile = File(...), sequence_col: str = "sequence
 @app.post("/train")
 async def train(file: UploadFile = File(...), config: str = "{}"):
     q: Queue = Queue()
-    q.put({"type": "log", "msg": "[V4.1] Training request accepted. Processing file..."})
+    q.put({"type": "log", "msg": "[V5] Connection established. Waiting for server resources..."})
 
-    try:
-        cfg_dict = json.loads(config)
-        cfg = TrainConfig(**cfg_dict)
-        
-        # Read file content efficiently
-        content = await file.read()
-        raw = content.decode("utf-8-sig")
-        df = pd.read_csv(io.StringIO(raw))
-        sequences = clean_sequences(df, cfg.sequence_col, cfg.min_seq_len)
-        
-        # Explicitly clear raw objects now to save RAM
-        del raw
-        del content
-        del df
-        gc.collect()
-        
-    except Exception as e:
-        q.put({"type": "error", "msg": f"Parsing Error: {str(e)}"})
-        return StreamingResponse(iter([f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"]), media_type="text/event-stream")
+    # Read content once in main thread (required by FastAPI)
+    content = await file.read()
 
-    def run_training(sequences_data):
+    def run_training_v5(content_bytes, config_str):
         try:
-            q.put({"type": "log", "msg": "[V4.1] Engine started. Normalizing sequences..."})
+            q.put({"type": "log", "msg": "[V5] Decoding DNA dataset..."})
             
-            # HARD LIMIT for Free Tier safety
+            # Config
+            cfg_dict = json.loads(config_str)
+            cfg = TrainConfig(**cfg_dict)
+            
+            # Parse CSV in thread
+            raw = content_bytes.decode("utf-8-sig")
+            df = pd.read_csv(io.StringIO(raw))
+            sequences = clean_sequences(df, cfg.sequence_col, cfg.min_seq_len)
+            
+            # Clear memory immediately
+            del raw
+            del df
+            gc.collect()
+            
+            q.put({"type": "log", "msg": f"[V5] Data cleaned. Building sliding-window dataset..."})
+            
+            # LIMIT for Free Tier safety
             MAX_SAMPLES = 1000 
-            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, MAX_SAMPLES)
+            X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, MAX_SAMPLES)
             
-            q.put({"type": "log", "msg": f"[V4.1] Dataset locked: {len(X_oh)} samples. Initializing AI..."})
+            q.put({"type": "log", "msg": f"[V5] Dataset ready ({len(X_oh)} samples). Building AI model..."})
 
             model = build_model(cfg) 
 
-            q.put({"type": "log", "msg": "[V4.1] Model live. Beginning epochs..."})
+            q.put({"type": "log", "msg": "[V5] Model live. Training started..."})
             model.fit(
                 [X_oh, X_int], y,
-                batch_size=32, # Lower batch size for stability
+                batch_size=32,
                 epochs=cfg.epochs,
                 callbacks=[StreamCallback(q, cfg.epochs)],
                 verbose=0,
@@ -353,13 +352,16 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
 
             store.model     = model
             store.config    = cfg.dict()
-            store.sequences = sequences_data
+            store.sequences = sequences
             store.trained   = True
-            q.put({"type": "log", "msg": "[V4.1] COMPLETE: Model ready."})
+            q.put({"type": "log", "msg": "[V5] SUCCESS: Model cached."})
             q.put({"type": "done"})
 
         except Exception as e:
-    thread = threading.Thread(target=run_training, daemon=True)
+            q.put({"type": "error", "msg": f"V5 Engine Crash: {str(e)}"})
+
+    # Start the thread
+    thread = threading.Thread(target=run_training_v5, args=(content, config), daemon=True)
     thread.start()
 
     def event_stream():
