@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from queue import Queue
 from typing import Optional
+import gc
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 warnings.filterwarnings("ignore")
@@ -79,9 +80,9 @@ class TrainConfig(BaseModel):
     window_size:  int   = 100
     step:         int   = 3
     max_sequences:int   = 5000
-    lstm_units_1: int   = 128
-    lstm_units_2: int   = 64
-    lstm_units_3: int   = 32
+    lstm_units_1: int   = 64
+    lstm_units_2: int   = 32
+    lstm_units_3: int   = 16
     attn_heads:   int   = 4
     dropout_rate: float = 0.2
     batch_size:   int   = 128
@@ -347,6 +348,12 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             q.put({"type": "log", "msg": "Model built: 3-BiLSTM + Attention + Embedding + PosEnc."})
             q.put({"type": "log", "msg": f"Model: Embedding(16) → BiLSTM({cfg.lstm_units_1}) → BiLSTM({cfg.lstm_units_2}) → BiLSTM({cfg.lstm_units_3}) + Residual → Attention → Output"})
             q.put({"type": "log", "msg": f"Starting training for up to {cfg.epochs} epochs..."})
+
+            # CRITICAL: Clear raw data to free RAM before training starts
+            del sequences
+            del df
+            gc.collect()
+            q.put({"type": "log", "msg": "Memory optimized: raw sequences cleared."})
 
             callbacks = [
                 StreamCallback(q, cfg.epochs),

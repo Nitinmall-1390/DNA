@@ -12,7 +12,7 @@ const BASES = ["A","C","G","T"];
 
 const DEF_TRAIN = {
   sequence_col:"sequence", min_seq_len:100, window_size:100, step:3,
-  max_sequences:5000, lstm_units_1:128, lstm_units_2:64, lstm_units_3:32,
+  max_sequences:2000, lstm_units_1:64, lstm_units_2:32, lstm_units_3:16,
   dropout_rate:0.2, batch_size:128, epochs:50, learning_rate:0.001,
   val_split:0.15, patience:15,
 };
