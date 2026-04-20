@@ -349,7 +349,10 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             q.put({"type": "log", "msg": f"Model: Embedding(16) → BiLSTM({cfg.lstm_units_1}) → BiLSTM({cfg.lstm_units_2}) → BiLSTM({cfg.lstm_units_3}) + Residual → Attention → Output"})
             q.put({"type": "log", "msg": f"Starting training for up to {cfg.epochs} epochs..."})
 
-            # CRITICAL: Clear raw data to free RAM before training starts
+            # CRITICAL: Cache sequences before clearing local memory
+            store.sequences = sequences
+            store.config    = cfg.dict()
+
             del sequences
             del df
             gc.collect()
@@ -372,10 +375,13 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
 
             # Cache trained model
             store.model     = model
-            store.config    = cfg.dict()
-            store.sequences = sequences
             store.trained   = True
-            q.put({"type": "log", "msg": "Training complete. Model cached."})
+
+            # Clear heavy training data to free RAM while idle
+            del X_oh_train, X_int_train, X_oh_val, X_int_val, y_train, y_val
+            gc.collect()
+
+            q.put({"type": "log", "msg": "Training complete. Model cached and memory cleared."})
             q.put({"type": "done"})
 
         except Exception as e:
