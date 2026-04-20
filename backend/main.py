@@ -327,43 +327,26 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
         raise HTTPException(status_code=400, detail=str(e))
 
     q: Queue = Queue()
+    q.put({"type": "log", "msg": "[V3] Initializing training thread..."})
 
-    def run_training():
-        nonlocal sequences, df
+    def run_training(sequences_data, df_data):
         try:
-            q.put({"type": "log", "msg": "Building sliding-window dataset (v2)..."})
-            X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, cfg.max_sequences)
-            q.put({"type": "log", "msg": f"Dataset: {len(X_oh):,} samples"})
+            q.put({"type": "log", "msg": "[V3] Building sliding-window dataset..."})
+            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, cfg.max_sequences)
+            q.put({"type": "log", "msg": f"[V3] Dataset: {len(X_oh):,} samples"})
 
-            # Split (we need to split both X_oh and X_int)
-            idx = np.arange(len(X_oh))
-            tr_idx, val_idx = train_test_split(idx, test_size=cfg.val_split, random_state=42)
+            # Sync tr/val split
+            indices = np.arange(len(X_oh))
+            tr_idx, val_idx = train_test_split(indices, test_size=cfg.val_split, random_state=42)
             
             X_oh_train, X_oh_val = X_oh[tr_idx], X_oh[val_idx]
             X_int_train, X_int_val = X_int[tr_idx], X_int[val_idx]
             y_train, y_val = y[tr_idx], y[val_idx]
 
-            q.put({"type": "log", "msg": f"Train: {len(X_oh_train):,}  Val: {len(X_oh_val):,}"})
-
             model = build_model(cfg)
-            q.put({"type": "log", "msg": "Model built: 3-BiLSTM + Attention + Embedding + PosEnc."})
-            q.put({"type": "log", "msg": f"Model: Embedding(16) → BiLSTM({cfg.lstm_units_1}) → BiLSTM({cfg.lstm_units_2}) → BiLSTM({cfg.lstm_units_3}) + Residual → Attention → Output"})
-            q.put({"type": "log", "msg": f"Starting training for up to {cfg.epochs} epochs..."})
+            q.put({"type": "log", "msg": "[V3] Model built. Starting training..."})
 
-            # CRITICAL: Cache sequences before clearing local memory
-            store.sequences = sequences
-            store.config    = cfg.dict()
-
-            del sequences
-            del df
-            gc.collect()
-            q.put({"type": "log", "msg": "Memory optimized: raw sequences cleared."})
-
-            callbacks = [
-                StreamCallback(q, cfg.epochs),
-                # Removed EarlyStopping to ensure training reaches max epochs
-                ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=max(2, cfg.patience // 2), min_lr=1e-6, verbose=0),
-            ]
+            callbacks = [StreamCallback(q, cfg.epochs)]
 
             model.fit(
                 [X_oh_train, X_int_train], y_train,
@@ -371,18 +354,15 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
                 batch_size=cfg.batch_size,
                 epochs=cfg.epochs,
                 callbacks=callbacks,
-                verbose=1,
+                verbose=0,
             )
 
-            # Cache trained model
+            # Cache to global store
             store.model     = model
+            store.config    = cfg.dict()
+            store.sequences = sequences_data
             store.trained   = True
-
-            # Clear heavy training data to free RAM while idle
-            del X_oh_train, X_int_train, X_oh_val, X_int_val, y_train, y_val
-            gc.collect()
-
-            q.put({"type": "log", "msg": "Training complete. Model cached and memory cleared."})
+            q.put({"type": "log", "msg": "[V3] Training complete. Model ready."})
             q.put({"type": "done"})
 
         except Exception as e:
