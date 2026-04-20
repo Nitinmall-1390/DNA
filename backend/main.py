@@ -327,42 +327,40 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
         raise HTTPException(status_code=400, detail=str(e))
 
     q: Queue = Queue()
-    q.put({"type": "log", "msg": "[V3] Initializing training thread..."})
-
-    def run_training(sequences_data, df_data):
+    
+    def run_training(sequences_data):
         try:
-            q.put({"type": "log", "msg": "[V3] Building sliding-window dataset..."})
-            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, cfg.max_sequences)
-            q.put({"type": "log", "msg": f"[V3] Dataset: {len(X_oh):,} samples"})
+            q.put({"type": "log", "msg": "[V4] Thread started. Building dataset..."})
+            
+            # Limit samples aggressively to ensure it fits in 512MB
+            max_s = min(cfg.max_sequences, 1500)
+            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, max_s)
+            q.put({"type": "log", "msg": f"[V4] Dataset ready: {len(X_oh)} samples"})
 
-            # Sync tr/val split
+            # Split
             indices = np.arange(len(X_oh))
             tr_idx, val_idx = train_test_split(indices, test_size=cfg.val_split, random_state=42)
             
-            X_oh_train, X_oh_val = X_oh[tr_idx], X_oh[val_idx]
-            X_int_train, X_int_val = X_int[tr_idx], X_int[val_idx]
-            y_train, y_val = y[tr_idx], y[val_idx]
+            # Construct model (2-Layer BiLSTM for memory safety)
+            q.put({"type": "log", "msg": "[V4] Constructing safe-mode model..."})
+            model = build_model(cfg) 
 
-            model = build_model(cfg)
-            q.put({"type": "log", "msg": "[V3] Model built. Starting training..."})
-
-            callbacks = [StreamCallback(q, cfg.epochs)]
-
+            # Start training
+            q.put({"type": "log", "msg": "[V4] Training starting..."})
             model.fit(
-                [X_oh_train, X_int_train], y_train,
-                validation_data=([X_oh_val, X_int_val], y_val),
-                batch_size=cfg.batch_size,
+                [X_oh[tr_idx], X_int[tr_idx]], y[tr_idx],
+                validation_data=([X_oh[val_idx], X_int[val_idx]], y[val_idx]),
+                batch_size=min(cfg.batch_size, 64),
                 epochs=cfg.epochs,
-                callbacks=callbacks,
+                callbacks=[StreamCallback(q, cfg.epochs)],
                 verbose=0,
             )
 
-            # Cache to global store
             store.model     = model
             store.config    = cfg.dict()
             store.sequences = sequences_data
             store.trained   = True
-            q.put({"type": "log", "msg": "[V3] Training complete. Model ready."})
+            q.put({"type": "log", "msg": "[V4] SUCCESS: Model cached."})
             q.put({"type": "done"})
 
         except Exception as e:
