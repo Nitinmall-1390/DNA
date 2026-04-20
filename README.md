@@ -1,70 +1,96 @@
-# Getting Started with Create React App
+# 🧬 DNA Sequence Generator (BiLSTM + Attention)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Developed by **Nitin Mall**
 
-## Available Scripts
+A full-stack deep learning application that allows researchers and developers to upload DNA datasets (CSV), train a custom **3-Layer Bidirectional LSTM** neural network with **Multi-Head Attention**, and generate novel DNA sequences based on the learned patterns.
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## 🚀 Live Demo
+- **Frontend (Vercel):** [https://dna-psi-smoky.vercel.app/](https://dna-psi-smoky.vercel.app/)
+- **Backend (Render):** [https://dna-tezh.onrender.com](https://dna-tezh.onrender.com)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## ✨ Features
+- **Real-time Training:** Stream epoch-by-epoch progress (Loss, Accuracy, Validation stats) directly to the browser.
+- **Advanced Architecture (v2):** 
+  - 3-Layer Bidirectional LSTM for deep sequence understanding.
+  - Multi-Head Attention mechanism to capture long-range dependencies.
+  - Sinusoidal Positional Encoding & Integer Embedding.
+- **Dynamic Generation:** Adjust "Temperature" to control creativity (conservative vs. diverse sequences).
+- **Responsive Web UI:** A high-end, futuristic dark-mode interface with DNA helix animations and real-time training logs.
+- **Memory Optimized:** Specifically tuned to run on limited resources (Render Free Tier) using `tensorflow-cpu` and garbage collection.
 
-### `npm test`
+---
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 🛠️ Technology Stack
+### Backend
+- **FastAPI:** High-performance Python web framework.
+- **TensorFlow/Keras:** Deep learning engine for training and sequence generation.
+- **Pandas/NumPy:** Data cleaning and numerical processing.
+- **SSE (Server-Sent Events):** For real-time progress streaming.
 
-### `npm run build`
+### Frontend
+- **React.js:** Modern UI framework.
+- **Canvas API:** Custom helix animations and live loss charts.
+- **CSS3:** Glassmorphism and vibrant neon aesthetics.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 📦 Project Structure
+```text
+dna-lstm/
+├── backend/
+│   ├── main.py            # FastAPI Application & Model Logic
+│   ├── requirements.txt   # Python dependencies
+│   └── runtime.txt        # Specified Python version for Render
+├── src/
+│   ├── App.js             # Main React UI component
+│   └── index.js           # React mounting point
+├── public/                # Static assets
+└── vercel.json            # Deployment config for Vercel
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
+## 🚦 Getting Started (Local)
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### 1. Clone the repository
+```bash
+git clone https://github.com/Nitinmall-1390/DNA.git
+cd DNA
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### 2. Run the Backend
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### 3. Run the Frontend
+```bash
+# In the root DNA directory
+npm install
+npm start
+```
+The app will be available at `http://localhost:3000`.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+---
 
-## Learn More
+## 📜 Deployment Details
+- **Backend:** Hosted on **Render** (Python 3.11). Configured with `runtime.txt` and `tensorflow-cpu` to fit within 512MB RAM.
+- **Frontend:** Hosted on **Vercel**. Configured with `vercel.json` for SPA routing.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 🤝 Contributing
+Feel free to fork this project and submit pull requests. For major changes, please open an issue first to discuss what you would like to change.
 
-### Code Splitting
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## 👤 Author
+**Nitin Mall**
+- GitHub: [@Nitinmall-1390](https://github.com/Nitinmall-1390)
+- DNA Lab Interface: [Live App](https://dna-psi-smoky.vercel.app/)
