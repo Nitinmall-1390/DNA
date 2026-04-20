@@ -307,50 +307,45 @@ async def upload_csv(file: UploadFile = File(...), sequence_col: str = "sequence
 
 @app.post("/train")
 async def train(file: UploadFile = File(...), config: str = "{}"):
-    """
-    Upload CSV + config JSON → train LSTM → stream SSE progress.
-    Frontend connects with EventSource('/train') after a POST.
-    We use a thread + Queue to bridge sync Keras training with async SSE.
-    """
-    content = await file.read()
+    q: Queue = Queue()
+    q.put({"type": "log", "msg": "[V4.1] Training request accepted. Processing file..."})
+
     try:
         cfg_dict = json.loads(config)
         cfg = TrainConfig(**cfg_dict)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Bad config: {e}")
-
-    try:
+        
+        # Read file content efficiently
+        content = await file.read()
         raw = content.decode("utf-8-sig")
         df = pd.read_csv(io.StringIO(raw))
         sequences = clean_sequences(df, cfg.sequence_col, cfg.min_seq_len)
+        
+        # Explicitly clear raw objects now to save RAM
+        del raw
+        del content
+        del df
+        gc.collect()
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        q.put({"type": "error", "msg": f"Parsing Error: {str(e)}"})
+        return StreamingResponse(iter([f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"]), media_type="text/event-stream")
 
-    q: Queue = Queue()
-    
     def run_training(sequences_data):
         try:
-            q.put({"type": "log", "msg": "[V4] Thread started. Building dataset..."})
+            q.put({"type": "log", "msg": "[V4.1] Engine started. Normalizing sequences..."})
             
-            # Limit samples aggressively to ensure it fits in 512MB
-            max_s = min(cfg.max_sequences, 1500)
-            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, max_s)
-            q.put({"type": "log", "msg": f"[V4] Dataset ready: {len(X_oh)} samples"})
+            # HARD LIMIT for Free Tier safety
+            MAX_SAMPLES = 1000 
+            X_oh, X_int, y = make_windows(sequences_data, cfg.window_size, cfg.step, MAX_SAMPLES)
+            
+            q.put({"type": "log", "msg": f"[V4.1] Dataset locked: {len(X_oh)} samples. Initializing AI..."})
 
-            # Split
-            indices = np.arange(len(X_oh))
-            tr_idx, val_idx = train_test_split(indices, test_size=cfg.val_split, random_state=42)
-            
-            # Construct model (2-Layer BiLSTM for memory safety)
-            q.put({"type": "log", "msg": "[V4] Constructing safe-mode model..."})
             model = build_model(cfg) 
 
-            # Start training
-            q.put({"type": "log", "msg": "[V4] Training starting..."})
+            q.put({"type": "log", "msg": "[V4.1] Model live. Beginning epochs..."})
             model.fit(
-                [X_oh[tr_idx], X_int[tr_idx]], y[tr_idx],
-                validation_data=([X_oh[val_idx], X_int[val_idx]], y[val_idx]),
-                batch_size=min(cfg.batch_size, 64),
+                [X_oh, X_int], y,
+                batch_size=32, # Lower batch size for stability
                 epochs=cfg.epochs,
                 callbacks=[StreamCallback(q, cfg.epochs)],
                 verbose=0,
@@ -360,12 +355,10 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             store.config    = cfg.dict()
             store.sequences = sequences_data
             store.trained   = True
-            q.put({"type": "log", "msg": "[V4] SUCCESS: Model cached."})
+            q.put({"type": "log", "msg": "[V4.1] COMPLETE: Model ready."})
             q.put({"type": "done"})
 
         except Exception as e:
-            q.put({"type": "error", "msg": str(e)})
-
     thread = threading.Thread(target=run_training, daemon=True)
     thread.start()
 
