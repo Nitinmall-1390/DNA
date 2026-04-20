@@ -329,6 +329,7 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
     q: Queue = Queue()
 
     def run_training():
+        nonlocal sequences, df
         try:
             q.put({"type": "log", "msg": "Building sliding-window dataset (v2)..."})
             X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, cfg.max_sequences)
