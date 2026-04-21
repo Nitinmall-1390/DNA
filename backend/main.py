@@ -55,8 +55,12 @@ app = FastAPI(title="DNA LSTM Generator — Nitin Mall")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # tighten in production if needed
-    allow_credentials=True,
+    allow_origins=[
+        "https://dna-psi-smoky.vercel.app",
+        "https://dna-tezh.onrender.com",
+        "http://localhost:3000"
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -180,36 +184,26 @@ def build_model(cfg: TrainConfig) -> tf.keras.Model:
     x = Lambda(lambda t: t + pe_constant, name="add_pos_enc")(x)
 
     # BiLSTM 1
-    x = Bidirectional(LSTM(cfg.lstm_units_1, return_sequences=True), name="bilstm1")(x)
+    x = Bidirectional(LSTM(32, return_sequences=True), name="bilstm1")(x)
     x = LayerNormalization(name="ln1")(x)
     x = Dropout(cfg.dropout_rate, name="drop1")(x)
 
     # BiLSTM 2 + Residual
-    res1 = Dense(cfg.lstm_units_2 * 2, name="res_proj1")(x)
-    x2 = Bidirectional(LSTM(cfg.lstm_units_2, return_sequences=True), name="bilstm2")(x)
+    res1 = Dense(16 * 2, name="res_proj1")(x)
+    x2 = Bidirectional(LSTM(16, return_sequences=True), name="bilstm2")(x)
     x2 = LayerNormalization(name="ln2")(x2)
     x2 = Add(name="res_add1")([res1, x2])
     x2 = Dropout(cfg.dropout_rate, name="drop2")(x2)
 
-    # BiLSTM 3 + Residual
-    res2 = Dense(cfg.lstm_units_3 * 2, name="res_proj2")(x2)
-    x3 = Bidirectional(LSTM(cfg.lstm_units_3, return_sequences=True), name="bilstm3")(x2)
-    x3 = LayerNormalization(name="ln3")(x3)
-    x3 = Add(name="res_add2")([res2, x3])
-    x3 = Dropout(cfg.dropout_rate, name="drop3")(x3)
-
-    # Multi-Head Attention
-    attn = MultiHeadAttention(num_heads=cfg.attn_heads, key_dim=32, name="mha")(x3, x3)
+    # Multi-Head Attention (Now on x2)
+    attn = MultiHeadAttention(num_heads=cfg.attn_heads, key_dim=32, name="mha")(x2, x2)
     attn = LayerNormalization(name="ln_attn")(attn)
-    attn = Add(name="attn_res")([x3, attn])
+    attn = Add(name="attn_res")([x2, attn])
     attn = Dropout(cfg.dropout_rate, name="drop_attn")(attn)
 
     # Output head
     x = GlobalAveragePooling1D(name="gap")(attn)
-    x = Dense(64, activation="relu", name="dense1")(x)
-    x = LayerNormalization(name="ln_d1")(x)
-    x = Dropout(cfg.dropout_rate, name="drop_d1")(x)
-    x = Dense(32, activation="relu", name="dense2")(x)
+    x = Dense(32, activation="relu", name="dense1")(x)
     outputs = Dense(4, activation="softmax", name="output")(x)
 
     model = Model([inp_oh, inp_int], outputs, name="AttentionBiLSTM_DNA_v2")
