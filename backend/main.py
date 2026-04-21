@@ -179,27 +179,20 @@ def build_model(cfg: TrainConfig) -> tf.keras.Model:
     pe_constant = tf.constant(pe[np.newaxis, :, :], dtype=tf.float32)
     x = Lambda(lambda t: t + pe_constant, name="add_pos_enc")(x)
 
-    # BiLSTM 1
-    x = Bidirectional(LSTM(32, return_sequences=True), name="bilstm1")(x)
+    # Single BiLSTM (Fastest for Free Tier)
+    x = Bidirectional(LSTM(24, return_sequences=True), name="bilstm1")(x)
     x = LayerNormalization(name="ln1")(x)
     x = Dropout(cfg.dropout_rate, name="drop1")(x)
 
-    # BiLSTM 2 + Residual
-    res1 = Dense(16 * 2, name="res_proj1")(x)
-    x2 = Bidirectional(LSTM(16, return_sequences=True), name="bilstm2")(x)
-    x2 = LayerNormalization(name="ln2")(x2)
-    x2 = Add(name="res_add1")([res1, x2])
-    x2 = Dropout(cfg.dropout_rate, name="drop2")(x2)
-
-    # Multi-Head Attention (Now on x2)
-    attn = MultiHeadAttention(num_heads=cfg.attn_heads, key_dim=32, name="mha")(x2, x2)
+    # Multi-Head Attention
+    attn = MultiHeadAttention(num_heads=2, key_dim=16, name="mha")(x, x)
     attn = LayerNormalization(name="ln_attn")(attn)
-    attn = Add(name="attn_res")([x2, attn])
+    attn = Add(name="attn_res")([x, attn])
     attn = Dropout(cfg.dropout_rate, name="drop_attn")(attn)
 
     # Output head
     x = GlobalAveragePooling1D(name="gap")(attn)
-    x = Dense(32, activation="relu", name="dense1")(x)
+    x = Dense(16, activation="relu", name="dense1")(x)
     outputs = Dense(4, activation="softmax", name="output")(x)
 
     model = Model([inp_oh, inp_int], outputs, name="AttentionBiLSTM_DNA_v2")
@@ -248,8 +241,16 @@ class StreamCallback(Callback):
     def on_epoch_begin(self, epoch, logs=None):
         self.q.put({
             "type": "log",
-            "msg": f"⏳ Epoch {epoch + 1}/{self.total} starting... (Processing batches)"
+            "msg": f"⏳ Epoch {epoch + 1}/{self.total} starting..."
         })
+
+    def on_batch_end(self, batch, logs=None):
+        # Update every 5 batches to show activity without flooding
+        if batch % 5 == 0:
+            self.q.put({
+                "type": "log",
+                "msg": f"  ▹ Batch {batch} processing..."
+            })
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
