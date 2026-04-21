@@ -239,18 +239,7 @@ class StreamCallback(Callback):
         self.total = total_epochs
 
     def on_epoch_begin(self, epoch, logs=None):
-        self.q.put({
-            "type": "log",
-            "msg": f"⏳ Epoch {epoch + 1}/{self.total} starting..."
-        })
-
-    def on_batch_end(self, batch, logs=None):
-        # Update every 5 batches to show activity without flooding
-        if batch % 5 == 0:
-            self.q.put({
-                "type": "log",
-                "msg": f"  ▹ Batch {batch} processing..."
-            })
+        pass # No extra logs during training as requested
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -323,28 +312,28 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             cfg_dict = json.loads(config_str)
             cfg = TrainConfig(**cfg_dict)
             
-            q.put({"type": "log", "msg": "🧬 Starting DNA Pipeline..."})
             raw = content_bytes.decode("utf-8-sig")
             df = pd.read_csv(io.StringIO(raw))
-            q.put({"type": "log", "msg": "🧹 Cleaning DNA sequences..."})
             sequences = clean_sequences(df, cfg.sequence_col, cfg.min_seq_len)
+            avg_len = round(sum(len(s) for s in sequences) / len(sequences)) if sequences else 0
             
-            # Clear memory immediately
+            q.put({"type": "log", "msg": f"CSV parsed: {len(sequences)} sequences, avg {avg_len}bp."})
+            
+            # Clear memory 
             del raw
             del df
             gc.collect()
-            
-            q.put({"type": "log", "msg": f"[V5] Data cleaned. Building sliding-window dataset..."})
-            
-            # LIMIT for Free Tier safety
-            MAX_SAMPLES = 500 
+
+            # Prepare dataset
+            MAX_SAMPLES = 2000 
             X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, MAX_SAMPLES)
             
-            q.put({"type": "log", "msg": f"🤖 Modeling Building... ({len(X_oh)} samples identified)"})
+            q.put({"type": "log", "msg": f"Dataset: {len(X_oh)} samples | vocab: 4 tokens"})
+            q.put({"type": "log", "msg": "Model: Embed(4->16) -> BiLSTM(48) -> Dense(4)"})
 
             model = build_model(cfg) 
 
-            q.put({"type": "log", "msg": "[V5] Model live. Training started..."})
+            q.put({"type": "log", "msg": f"Starting training for up to {cfg.epochs} epochs..."})
             model.fit(
                 [X_oh, X_int], y,
                 validation_split=0.1, # Small validation set for stats
@@ -370,7 +359,7 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
 
     def event_stream():
         # First push to flush connection
-        yield "data: {\"type\": \"log\", \"msg\": \"🚀 Connection Established. Backend Warming Up...\"}\n\n"
+        yield "data: {\"type\": \"log\", \"msg\": \"Server connection established.\"}\n\n"
         
         while True:
             try:
