@@ -239,12 +239,17 @@ class StreamCallback(Callback):
         self.total = total_epochs
 
     def on_epoch_begin(self, epoch, logs=None):
-        pass # No extra logs during training as requested
+        self.q.put({
+            "type": "log",
+            "msg": f"Epoch {epoch + 1}/{self.total} training..."
+        })
+        print(f"--- Epoch {epoch + 1}/{self.total} STARTING ---")
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        loss = logs.get("loss") or 0
-        v_loss = logs.get("val_loss") or 0
+        loss = logs.get("loss", 0)
+        v_loss = logs.get("val_loss", 0)
+        # Handle different TF versions of metric names
         acc = logs.get("accuracy") or logs.get("acc") or 0
         v_acc = logs.get("val_accuracy") or logs.get("val_acc") or 0
 
@@ -257,7 +262,7 @@ class StreamCallback(Callback):
             "acc":      round(float(acc) * 100, 2),
             "val_acc":  round(float(v_acc) * 100, 2),
         })
-        print(f"DEBUG: Epoch {epoch + 1}/{self.total} complete. loss: {logs.get('loss', 0):.4f}")
+        print(f"--- Epoch {epoch + 1}/{self.total} COMPLETE: loss={loss:.4f}, acc={acc:.4f} ---")
 
     def on_train_end(self, logs=None):
         self.q.put({"type": "train_end"})
@@ -324,8 +329,8 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             del df
             gc.collect()
 
-            # Prepare dataset
-            MAX_SAMPLES = 2000 
+            # Prepare dataset (Match your image: use 1000 for faster start)
+            MAX_SAMPLES = 1000 
             X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, MAX_SAMPLES)
             
             q.put({"type": "log", "msg": f"Dataset: {len(X_oh)} samples | vocab: 4 tokens"})
