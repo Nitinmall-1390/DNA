@@ -245,11 +245,16 @@ class StreamCallback(Callback):
         self.q = q
         self.total = total_epochs
 
+    def on_epoch_begin(self, epoch, logs=None):
+        self.q.put({
+            "type": "log",
+            "msg": f"⏳ Epoch {epoch + 1}/{self.total} starting... (Processing batches)"
+        })
+
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        # Robust metric lookup
-        loss = logs.get("loss") or logs.get("loss") or 0
-        v_loss = logs.get("val_loss") or logs.get("val_loss") or 0
+        loss = logs.get("loss") or 0
+        v_loss = logs.get("val_loss") or 0
         acc = logs.get("accuracy") or logs.get("acc") or 0
         v_acc = logs.get("val_accuracy") or logs.get("val_acc") or 0
 
