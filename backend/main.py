@@ -317,9 +317,10 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             cfg_dict = json.loads(config_str)
             cfg = TrainConfig(**cfg_dict)
             
-            # Parse CSV in thread
+            q.put({"type": "log", "msg": "🧬 Starting DNA Pipeline..."})
             raw = content_bytes.decode("utf-8-sig")
             df = pd.read_csv(io.StringIO(raw))
+            q.put({"type": "log", "msg": "🧹 Cleaning DNA sequences..."})
             sequences = clean_sequences(df, cfg.sequence_col, cfg.min_seq_len)
             
             # Clear memory immediately
@@ -330,10 +331,10 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             q.put({"type": "log", "msg": f"[V5] Data cleaned. Building sliding-window dataset..."})
             
             # LIMIT for Free Tier safety
-            MAX_SAMPLES = 1000 
+            MAX_SAMPLES = 500 
             X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, MAX_SAMPLES)
             
-            q.put({"type": "log", "msg": f"[V5] Dataset ready ({len(X_oh)} samples). Building AI model..."})
+            q.put({"type": "log", "msg": f"🤖 Modeling Building... ({len(X_oh)} samples identified)"})
 
             model = build_model(cfg) 
 
@@ -362,11 +363,19 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
     thread.start()
 
     def event_stream():
+        # First push to flush connection
+        yield "data: {\"type\": \"log\", \"msg\": \"🚀 Connection Established. Backend Warming Up...\"}\n\n"
+        
         while True:
-            item = q.get()
-            yield f"data: {json.dumps(item)}\n\n"
-            if item["type"] in ("done", "error"):
-                break
+            try:
+                # Use a timeout to allow heartbeat if queue is empty
+                item = q.get(timeout=15) 
+                yield f"data: {json.dumps(item)}\n\n"
+                if item["type"] in ("done", "error"):
+                    break
+            except Exception:
+                # Heartbeat to keep Railway connection alive during slow TF init
+                yield ": heartbeat\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
