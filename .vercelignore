@@ -1,0 +1,13 @@
+# Exclude backend and python files from Vercel frontend build
+backend/
+*.py
+*.keras
+*.h5
+*.npy
+dna_sequences.txt
+plots/
+plots_fast/
+plots_test/
+requirements.txt
+runtime.txt
+__pycache__/
