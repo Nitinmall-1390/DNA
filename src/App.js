@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ── Config ────────────────────────────────────────────────────
 // Change this to your deployed backend URL when you deploy
 // e.g. "https://dna-lstm-backend.onrender.com"
-const API_BASE = process.env.REACT_APP_API_URL || "https://dna-production-28d1.up.railway.app";
+const API_BASE = process.env.REACT_APP_API_URL || 
+  (window.location.hostname === "localhost" ? "http://localhost:8000" : "https://dna-production-28d1.up.railway.app");
 
 const BC  = { A:"#00ff88", C:"#00d4ff", G:"#ffaa00", T:"#ff6b6b" };
 const BBG = { A:"#00ff8812", C:"#00d4ff12", G:"#ffaa0012", T:"#ff6b6b12" };

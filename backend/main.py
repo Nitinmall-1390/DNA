@@ -65,8 +65,6 @@ app.add_middleware(
 class ModelStore:
     def __init__(self):
         self.model      = None
-        self.char2idx   = None
-        self.idx2char   = None
         self.config     = None
         self.sequences  = []
         self.trained    = False
@@ -179,10 +177,20 @@ def build_model(cfg: TrainConfig) -> tf.keras.Model:
     pe_constant = tf.constant(pe[np.newaxis, :, :], dtype=tf.float32)
     x = Lambda(lambda t: t + pe_constant, name="add_pos_enc")(x)
 
-    # Single BiLSTM (Fastest for Free Tier)
-    x = Bidirectional(LSTM(24, return_sequences=True), name="bilstm1")(x)
+    # Multi-Layer BiLSTM (Using configuration)
+    x = Bidirectional(LSTM(cfg.lstm_units_1, return_sequences=True), name="bilstm1")(x)
     x = LayerNormalization(name="ln1")(x)
     x = Dropout(cfg.dropout_rate, name="drop1")(x)
+
+    if cfg.lstm_units_2 > 0:
+        x = Bidirectional(LSTM(cfg.lstm_units_2, return_sequences=True), name="bilstm2")(x)
+        x = LayerNormalization(name="ln2")(x)
+        x = Dropout(cfg.dropout_rate, name="drop2")(x)
+    
+    if cfg.lstm_units_3 > 0:
+        x = Bidirectional(LSTM(cfg.lstm_units_3, return_sequences=True), name="bilstm3")(x)
+        x = LayerNormalization(name="ln3")(x)
+        x = Dropout(cfg.dropout_rate, name="drop3")(x)
 
     # Multi-Head Attention
     attn = MultiHeadAttention(num_heads=2, key_dim=16, name="mha")(x, x)
@@ -192,7 +200,7 @@ def build_model(cfg: TrainConfig) -> tf.keras.Model:
 
     # Output head
     x = GlobalAveragePooling1D(name="gap")(attn)
-    x = Dense(16, activation="relu", name="dense1")(x)
+    x = Dense(32, activation="relu", name="dense1")(x)
     outputs = Dense(4, activation="softmax", name="output")(x)
 
     model = Model([inp_oh, inp_int], outputs, name="AttentionBiLSTM_DNA_v2")
@@ -333,6 +341,10 @@ async def train(file: UploadFile = File(...), config: str = "{}"):
             MAX_SAMPLES = 1000 
             X_oh, X_int, y = make_windows(sequences, cfg.window_size, cfg.step, MAX_SAMPLES)
             
+            if len(X_oh) == 0:
+                q.put({"type": "log", "msg": "ERROR: No valid windows found. Check sequence length vs window size."})
+                return
+
             q.put({"type": "log", "msg": f"Dataset: {len(X_oh)} samples | vocab: 4 tokens"})
             q.put({"type": "log", "msg": "Model: Embed(4->16) -> BiLSTM(48) -> Dense(4)"})
 
@@ -388,8 +400,6 @@ def generate(req: GenerateRequest):
         raise HTTPException(status_code=400, detail="No trained model found. Please train first.")
 
     window = store.config["window_size"]
-    char2idx = store.char2idx
-    idx2char = store.idx2char
 
     # Choose seed
     if req.seed and all(c in "ACGT" for c in req.seed.upper()):
@@ -400,6 +410,14 @@ def generate(req: GenerateRequest):
         seed_str = src[start: start + window]
     else:
         seed_str = "ATGCCCCAACTAAATACT"
+    
+    # Normalize seed length to window size
+    if len(seed_str) > window:
+        seed_str = seed_str[-window:]
+    elif len(seed_str) < window:
+        # Pad with random nucleotides if too short
+        padding = "".join(random.choice("ACGT") for _ in range(window - len(seed_str)))
+        seed_str = padding + seed_str
 
     seed_oh, seed_int = encode_dna(seed_str)
     if seed_oh.shape[0] < 5:
@@ -421,3 +439,7 @@ def clear_model():
     store.trained = False
     store.sequences = []
     return {"cleared": True}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

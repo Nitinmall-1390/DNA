@@ -34,8 +34,8 @@ for i in range(len(encoded) - fast.cfg.seq_length):
     X_list.append(encoded[i:i+fast.cfg.seq_length])
     y_list.append(encoded[i+fast.cfg.seq_length])
 
-X = fast.np.array(X_list, dtype=np.float32)
-y = fast.np.array(y_list, dtype=np.float32)
+X = fast.np.array(X_list, dtype=fast.np.float32)
+y = fast.np.array(y_list, dtype=fast.np.float32)
 valid_mask = y.sum(axis=1) > 0
 X = X[valid_mask]
 y = y[valid_mask]

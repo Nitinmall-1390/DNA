@@ -57,13 +57,7 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 
 # --- Font setup ---
-for font_path in [
-    "/usr/share/fonts/truetype/chinese/NotoSansSC[wght].ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-]:
-    if os.path.exists(font_path):
-        fm.fontManager.addfont(font_path)
-plt.rcParams["font.sans-serif"] = ["Noto Sans SC", "DejaVu Sans"]
+plt.rcParams["font.sans-serif"] = ["Inter", "Roboto", "DejaVu Sans", "Arial", "sans-serif"]
 plt.rcParams["axes.unicode_minus"] = False
 
 # --- Reproducibility ---
